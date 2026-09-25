@@ -28,9 +28,30 @@
 | `arduino/uno_altsoftserial` | 아두이노 우노(AltSoftSerial, D8/D9) |
 | `arduino/mega_serial1` | 아두이노 메가(하드웨어 Serial1) |
 
+## 실시간 뷰어 (웹 UI)
+
+`python/visualizer/`는 태그를 2D 도면 위에 실시간으로 보여주는 대시보드입니다. 태그마다 이름(라벨)을 붙일 수 있고, 지오펜스 구역에 태그가 들어오거나 나가면 빨강/초록으로 반짝입니다.
+
+![실시간 뷰어: 라벨이 붙은 태그 2개와 진입·이탈 시 반짝이는 지오펜스 구역](python/visualizer/preview.png)
+
+```bash
+cd python/visualizer
+pip install -r requirements.txt
+python server.py --source demo                     # 하드웨어 없이 먼저 체험
+python server.py --source serial --port /dev/ttyUSB0
+python server.py --source mqtt --host 192.168.0.10
+```
+
+이후 http://localhost:8000 접속. 사이드바에서 태그 이름을 클릭해 원하는 이름으로 바꿀 수 있습니다(브라우저에 저장). 구역은 `zones.example.json`에서 정의하며, `--zones` 옵션으로 자신의 도면에 맞는 파일을 지정할 수 있습니다.
+
 ## 배선 주의
 
 개발자 태그 커넥터는 **우측 5V(아두이노)**, **좌측 3.3V(라즈베리파이·ESP32)**입니다. 라즈베리파이에 5V 쪽을 연결하면 UART가 손상될 수 있습니다. TX↔RX는 교차 연결합니다.
+
+## 가이드
+
+- **[라즈베리파이 퀵스타트](docs/quickstart-raspberry-pi.ko.md)** — 배선, UART 설정, 10분 만에 위치 데이터 받기
+- **[문제 해결 가이드](docs/troubleshooting.ko.md)** — 시리얼 데이터 없음, 텍스트 깨짐, 낮은 `qf`, 파이/ESP32/아두이노/MQTT 문제
 
 ## 관련 글
 

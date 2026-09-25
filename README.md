@@ -38,13 +38,35 @@ python serial_reader.py --port /dev/ttyUSB0
 python -m pytest        # parser tests, no hardware needed
 ```
 
+## Live viewer (web UI)
+
+`python/visualizer/` is a small live dashboard: tags moving on a 2D floor plan, a
+custom label per tag ID, and a geofence zone that flashes red/green when a tag
+enters or leaves it.
+
+![Live viewer: two labeled tags and a geofence zone flashing on enter/exit](python/visualizer/preview.png)
+
+```bash
+cd python/visualizer
+pip install -r requirements.txt
+python server.py --source demo                     # try it with no hardware
+python server.py --source serial --port /dev/ttyUSB0
+python server.py --source mqtt --host 192.168.0.10
+```
+
+Then open http://localhost:8000. Click a tag's name in the sidebar to rename it (saved
+in your browser). Zones are defined in `zones.example.json` — point `--zones` at your
+own file to match your floor plan.
+
 ## Wiring notes
 
 The developer tag has two connectors: **5 V (right)** for Arduino, **3.3 V (left)** for Raspberry Pi and ESP32. Connecting the 5 V side to a Raspberry Pi GPIO can damage its UART. Always cross TX↔RX.
 
 ## Guides
 
-- Raspberry Pi: https://grow-space.io/en/docs/q1-en/raspberry-pi-en/
+- **[Raspberry Pi quickstart](docs/quickstart-raspberry-pi.md)** — wiring, UART setup, and reading positions in ~10 minutes
+- **[Troubleshooting guide](docs/troubleshooting.md)** — no serial data, garbled output, low `qf`, Pi/ESP32/Arduino/MQTT issues
+- Raspberry Pi (full): https://grow-space.io/en/docs/q1-en/raspberry-pi-en/
 - ESP32: https://grow-space.io/en/docs/q1-en/esp32-en/
 - Arduino Uno / Mega: https://grow-space.io/en/docs/q1-en/arduino-uno-en/ · https://grow-space.io/en/docs/q1-en/arduino-mega-2560-en/
 - Project ideas (robot heading, drones, follow-me, geofence): https://grow-space.io/en/blog/uwb-q1-project-ideas-en/
