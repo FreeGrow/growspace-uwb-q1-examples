@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GrowSpace UWB Q1 — Live Viewer</title>
+<style>
+  :root{--bg:#0b0d12;--panel:#12151c;--line:#242a35;--text:#e6e8ee;--muted:#8b93a3;--accent:#3b82f6;--danger:#ef4444;--ok:#22c55e;}
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{font-family:-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;overflow:hidden;}
+  #canvas-wrap{flex:1;position:relative;min-width:0;}
+  canvas{display:block;width:100%;height:100%;background:radial-gradient(circle at 50% 50%,#141821,#0b0d12);}
+  #sidebar{width:320px;flex-shrink:0;border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;padding:16px;gap:16px;overflow-y:auto;}
+  h1{font-size:15px;margin:0 0 2px;}
+  #status{font-size:12px;color:var(--muted);}
+  #status.live{color:var(--ok);}
+  .section-title{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 8px;}
+  #tags{display:flex;flex-direction:column;gap:8px;}
+  .tag-row{display:flex;align-items:center;gap:8px;background:#171b24;border:1px solid var(--line);border-radius:8px;padding:8px 10px;}
+  .tag-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .tag-row input{background:transparent;border:none;color:var(--text);font-size:13px;flex:1;min-width:0;}
+  .tag-row input:focus{outline:1px solid var(--accent);border-radius:4px;}
+  .tag-meta{font-size:11px;color:var(--muted);white-space:nowrap;}
+  #log{display:flex;flex-direction:column-reverse;gap:6px;font-size:12px;max-height:260px;overflow-y:auto;}
+  .log-row{padding:6px 8px;border-radius:6px;border:1px solid var(--line);}
+  .log-row.enter{border-color:var(--danger);color:#fca5a5;}
+  .log-row.exit{border-color:var(--ok);color:#86efac;}
+  .log-time{color:var(--muted);margin-right:6px;}
+  #zones-list{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px;}
+  #empty-tags{font-size:12px;color:var(--muted);}
+</style>
+</head>
+<body>
+<div id="canvas-wrap"><canvas id="c"></canvas></div>
+<div id="sidebar">
+  <div>
+    <h1>GrowSpace UWB Q1 — Live Viewer</h1>
+    <div id="status">connecting…</div>
+  </div>
+  <div>
+    <p class="section-title">Tags</p>
+    <div id="tags"><div id="empty-tags">Waiting for positions…</div></div>
+  </div>
+  <div>
+    <p class="section-title">Geofence zones</p>
+    <div id="zones-list">Loading zones.json…</div>
+  </div>
+  <div style="flex:1;min-height:0;display:flex;flex-direction:column;">
+    <p class="section-title">Events</p>
+    <div id="log"></div>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d");
+  var statusEl = document.getElementById("status");
+  var tagsEl = document.getElementById("tags");
+  var zonesListEl = document.getElementById("zones-list");
+  var logEl = document.getElementById("log");
+
+  var COLORS = ["#3b82f6", "#f59e0b", "#a855f7", "#22c55e", "#ef4444", "#06b6d4", "#eab308"];
+  var tags = new Map(); // tag_id -> {x,y,z,qf,color}
+  var zones = []; // {name, polygon, _flashUntil, _flashColor}
+
+  function resize() {
+    var wrap = document.getElementById("canvas-wrap");
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = wrap.clientWidth * dpr;
+    canvas.height = wrap.clientHeight * dpr;
+    canvas.style.width = wrap.clientWidth + "px";
+    canvas.style.height = wrap.clientHeight + "px";
+  }
+  window.addEventListener("resize", resize);
+
+  function colorFor(tagId) {
+    var idx = tags.size % COLORS.length;
+    return COLORS[idx];
+  }
+
+  function labelKey(tagId) { return "q1viz_label_" + tagId; }
+  function getLabel(tagId) {
+    try { return localStorage.getItem(labelKey(tagId)) || tagId; } catch (e) { return tagId; }
+  }
+  function setLabel(tagId, label) {
+    try { localStorage.setItem(labelKey(tagId), label || tagId); } catch (e) { /* private mode etc. */ }
+  }
+
+  function bounds() {
+    var minX = -1, minY = -1, maxX = 5, maxY = 4;
+    zones.forEach(function (z) {
+      z.polygon.forEach(function (pt) {
+        minX = Math.min(minX, pt[0]); maxX = Math.max(maxX, pt[0]);
+        minY = Math.min(minY, pt[1]); maxY = Math.max(maxY, pt[1]);
+      });
+    });
+    tags.forEach(function (t) {
+      minX = Math.min(minX, t.x); maxX = Math.max(maxX, t.x);
+      minY = Math.min(minY, t.y); maxY = Math.max(maxY, t.y);
+    });
+    var pad = 1.0;
+    return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
+  }
+
+  function project(x, y, b, w, h) {
+    var sx = w / (b.maxX - b.minX);
+    var sy = h / (b.maxY - b.minY);
+    var s = Math.min(sx, sy);
+    var ox = (w - (b.maxX - b.minX) * s) / 2;
+    var oy = (h - (b.maxY - b.minY) * s) / 2;
+    return [ox + (x - b.minX) * s, h - (oy + (y - b.minY) * s)]; // flip Y so +y is up
+  }
+
+  function draw() {
+    var dpr = window.devicePixelRatio || 1;
+    var w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    var b = bounds();
+
+    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+    ctx.lineWidth = 1 * dpr;
+    for (var gx = Math.ceil(b.minX); gx <= b.maxX; gx++) {
+      var p1 = project(gx, b.minY, b, w, h), p2 = project(gx, b.maxY, b, w, h);
+      ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke();
+    }
+    for (var gy = Math.ceil(b.minY); gy <= b.maxY; gy++) {
+      var q1 = project(b.minX, gy, b, w, h), q2 = project(b.maxX, gy, b, w, h);
+      ctx.beginPath(); ctx.moveTo(q1[0], q1[1]); ctx.lineTo(q2[0], q2[1]); ctx.stroke();
+    }
+
+    zones.forEach(function (z) {
+      ctx.beginPath();
+      z.polygon.forEach(function (pt, i) {
+        var pp = project(pt[0], pt[1], b, w, h);
+        if (i === 0) ctx.moveTo(pp[0], pp[1]); else ctx.lineTo(pp[0], pp[1]);
+      });
+      ctx.closePath();
+      var flashing = performance.now() < (z._flashUntil || 0);
+      ctx.fillStyle = flashing ? z._flashColor : "rgba(59,130,246,0.08)";
+      ctx.strokeStyle = flashing ? z._flashColor.replace("0.25", "0.9") : "rgba(59,130,246,0.5)";
+      ctx.lineWidth = 2 * dpr;
+      ctx.fill(); ctx.stroke();
+      var lp = project(z.polygon[0][0], z.polygon[0][1], b, w, h);
+      ctx.fillStyle = "rgba(230,232,238,0.8)";
+      ctx.font = (12 * dpr) + "px sans-serif";
+      ctx.fillText(z.name, lp[0] + 6, lp[1] - 6);
+    });
+
+    tags.forEach(function (t, tagId) {
+      var pp = project(t.x, t.y, b, w, h);
+      ctx.beginPath();
+      ctx.arc(pp[0], pp[1], 8 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = t.color;
+      ctx.fill();
+      ctx.lineWidth = 2 * dpr;
+      ctx.strokeStyle = "rgba(255,255,255,0.8)";
+      ctx.stroke();
+      ctx.fillStyle = "#e6e8ee";
+      ctx.font = "bold " + (12 * dpr) + "px sans-serif";
+      ctx.fillText(getLabel(tagId), pp[0] + 12 * dpr, pp[1] + 4 * dpr);
+    });
+
+    requestAnimationFrame(draw);
+  }
+
+  function renderTagList() {
+    tagsEl.innerHTML = "";
+    if (tags.size === 0) {
+      tagsEl.innerHTML = '<div id="empty-tags">Waiting for positions…</div>';
+      return;
+    }
+    tags.forEach(function (t, tagId) {
+      var row = document.createElement("div");
+      row.className = "tag-row";
+      var dot = document.createElement("div");
+      dot.className = "tag-dot";
+      dot.style.background = t.color;
+      var input = document.createElement("input");
+      input.value = getLabel(tagId);
+      input.title = "tag id: " + tagId;
+      input.addEventListener("change", function () { setLabel(tagId, input.value); });
+      var meta = document.createElement("div");
+      meta.className = "tag-meta";
+      meta.textContent = "qf " + (t.qf === null || t.qf === undefined ? "-" : t.qf);
+      row.appendChild(dot); row.appendChild(input); row.appendChild(meta);
+      tagsEl.appendChild(row);
+    });
+  }
+
+  function logEvent(text, cls) {
+    var row = document.createElement("div");
+    row.className = "log-row " + (cls || "");
+    var time = document.createElement("span");
+    time.className = "log-time";
+    time.textContent = new Date().toLocaleTimeString();
+    row.appendChild(time);
+    row.appendChild(document.createTextNode(text));
+    logEl.insertBefore(row, logEl.firstChild);
+    while (logEl.children.length > 50) logEl.removeChild(logEl.lastChild);
+  }
+
+  function loadZones() {
+    fetch("/zones.json").then(function (r) { return r.json(); }).then(function (list) {
+      zones = list.map(function (z) { return { name: z.name, polygon: z.polygon }; });
+      zonesListEl.innerHTML = zones.length
+        ? zones.map(function (z) { return "<div>&#9679; " + z.name + "</div>"; }).join("")
+        : "<div>No zones configured — edit zones.example.json</div>";
+    }).catch(function () { zonesListEl.textContent = "Could not load zones.json"; });
+  }
+
+  function connect() {
+    var es = new EventSource("/stream");
+    es.onopen = function () { statusEl.textContent = "live"; statusEl.className = "live"; };
+    es.onerror = function () { statusEl.textContent = "reconnecting…"; statusEl.className = ""; };
+    es.onmessage = function (e) {
+      var ev = JSON.parse(e.data);
+      if (ev.type === "position") {
+        var existing = tags.get(ev.tag_id);
+        tags.set(ev.tag_id, {
+          x: ev.x, y: ev.y, z: ev.z, qf: ev.qf,
+          color: existing ? existing.color : colorFor(ev.tag_id),
+        });
+        renderTagList();
+      } else if (ev.type === "geofence") {
+        var zone = zones.filter(function (z) { return z.name === ev.zone; })[0];
+        if (zone) {
+          zone._flashUntil = performance.now() + 1200;
+          zone._flashColor = ev.event === "enter" ? "rgba(239,68,68,0.25)" : "rgba(34,197,94,0.25)";
+        }
+        logEvent(getLabel(ev.tag_id) + " " + (ev.event === "enter" ? "entered" : "left") + " " + ev.zone, ev.event);
+      }
+    };
+  }
+
+  resize();
+  loadZones();
+  connect();
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>
