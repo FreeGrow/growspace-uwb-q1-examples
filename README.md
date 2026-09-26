@@ -1,10 +1,21 @@
-# GrowSpace UWB Q1 — Example Code
+# GrowSpace UWB Q1 — Indoor Positioning & RTLS Examples
 
-Sample code for the **GrowSpace UWB Creator Kit Q1**, a UWB indoor positioning development kit (10–30 cm accuracy, serial and MQTT output).
+Open-source Python, Arduino, and Raspberry Pi examples for **UWB indoor positioning** with the **GrowSpace UWB Creator Kit Q1** (10–30 cm accuracy, serial and MQTT output).
 
 - Kit and pricing: https://grow-space.io/en/uwb-kit-en-2/
 - Full documentation: https://grow-space.io/en/docs/q1-en/
 - 한국어: [README.ko.md](README.ko.md)
+
+## What you can build
+
+- Read real-time UWB coordinates from serial
+- Subscribe to UWB positioning data over MQTT
+- Visualize moving tags on a live 2D map
+- Calculate robot heading from two UWB tags
+- Build geofencing zones with enter/exit alerts
+- Connect UWB positioning to Arduino, ESP32, or Raspberry Pi
+
+Try it with no hardware first — see [Live viewer](#live-viewer-web-ui) below.
 
 ## What the devices output
 
@@ -44,7 +55,7 @@ python -m pytest        # parser tests, no hardware needed
 custom label per tag ID, and a geofence zone that flashes red/green when a tag
 enters or leaves it.
 
-![Live viewer: two labeled tags and a geofence zone flashing on enter/exit](python/visualizer/preview.png)
+![Live viewer: two tags moving on a 2D floor plan, with a geofence zone flashing red/green on enter/exit and a live event log](python/visualizer/visualizer_demo.gif)
 
 ```bash
 cd python/visualizer
@@ -71,8 +82,12 @@ The developer tag has two connectors: **5 V (right)** for Arduino, **3.3 V (left
 - Arduino Uno / Mega: https://grow-space.io/en/docs/q1-en/arduino-uno-en/ · https://grow-space.io/en/docs/q1-en/arduino-mega-2560-en/
 - Project ideas (robot heading, drones, follow-me, geofence): https://grow-space.io/en/blog/uwb-q1-project-ideas-en/
 
-## Support
+## Want to try the hardware?
+
+The GrowSpace Q1 Creator Kit includes UWB tags and anchors for indoor positioning development. Clone this repo, run the live viewer in demo mode above, then connect a Q1 to see your own real-time positions.
 
 Questions or a quote for your floor plan: https://grow-space.io/en/uwb-kit-en-2/#inquiry
 
-Released under the MIT License.
+---
+
+Released under the MIT License. If this project helped you, consider giving it a star — it helps other UWB developers find it.
